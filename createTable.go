@@ -78,7 +78,7 @@ func (c *Cache) AddCache(cfg CacheTableConfig) (*CacheTable, error) {
 	}
 
 	diskExpiryInterval := cfg.DiscExpiryInterval
-	if cfg.DiskExpiryTime > 0 && diskExpiryInterval <= 0 {
+	if diskExpiryInterval <= 0 {
 		diskExpiryInterval = time.Hour
 	}
 
@@ -90,17 +90,12 @@ func (c *Cache) AddCache(cfg CacheTableConfig) (*CacheTable, error) {
 		fromBytes:          cfg.FromBytes,
 		startupOptions:     cfg.StartupOptions,
 		expiryTime:         expiryTime,
+		persistQueue:       make(chan persistEntry, persistQueueSize),
 		diskExpiryInterval: diskExpiryInterval,
 		diskExpiryTime:     diskExpiryTime,
-		persistQueueSize:   persistQueueSize,
 		dataLoader:         cfg.DataLoader,
 		addItem:            cfg.AddItem,
 		deleteItem:         cfg.DeleteItem,
-	}
-
-	// Ensure we have a minimum of 1 in the persistQueueSize
-	if t.persistQueueSize <= 0 {
-		t.persistQueueSize = 1
 	}
 
 	c.tables[t.name] = t

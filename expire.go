@@ -68,7 +68,10 @@ func (table *CacheTable) ExpireDiskMaxAge(maxAge time.Duration) int {
 
 	_ = table.walk(func(key, path string, info os.FileInfo, err error) error {
 
-		if !table.ExistsInMemory(key) && info.ModTime().Before(expireTime) {
+		if info.ModTime().Before(expireTime) {
+			// nre-feeds#21 remove from memory as well as disk
+			table.delete(key)
+
 			err = os.Remove(path)
 			if err != nil {
 				expired++
@@ -107,20 +110,17 @@ func (table *CacheTable) FlushMemoryAndDisk() {
 		table.startDiskExpiryTimer()
 	}()
 
-	table.items = make(map[string]*CacheItem)
-	table.cleanupInterval = 0
-	table.stopMemoryExpiryTimer()
-
-	_ = table.walk(func(key, path string, info os.FileInfo, err error) error {
-		_ = os.Remove(path)
-		return nil
-	})
+	table.flushMemory()
+	table.flushDisk()
 }
 
 func (table *CacheTable) FlushMemory() {
 	table.mutex.Lock()
 	defer table.mutex.Unlock()
+	table.flushMemory()
+}
 
+func (table *CacheTable) flushMemory() {
 	table.items = make(map[string]*CacheItem)
 	table.cleanupInterval = 0
 	table.stopMemoryExpiryTimer()
@@ -133,7 +133,10 @@ func (table *CacheTable) FlushDisk() {
 		table.mutex.Unlock()
 		table.startDiskExpiryTimer()
 	}()
+	table.flushDisk()
+}
 
+func (table *CacheTable) flushDisk() {
 	_ = table.walk(func(key, path string, info os.FileInfo, err error) error {
 		_ = os.Remove(path)
 		return nil

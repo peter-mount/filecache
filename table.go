@@ -2,7 +2,6 @@ package filecache
 
 import (
 	"io/ioutil"
-	"log"
 	"os"
 	"sync"
 	"time"
@@ -20,7 +19,6 @@ type CacheTable struct {
 	diskExpiryTime     time.Duration
 	diskExpiryInterval time.Duration
 	diskExpiryTimer    *time.Timer
-	persistQueueSize   int
 	persistQueue       chan persistEntry
 	items              map[string]*CacheItem
 	started            bool
@@ -34,24 +32,18 @@ type CacheTable struct {
 func (table *CacheTable) start() error {
 	table.basePath = table.parent.cacheDir + PathSeparator + table.name
 
-	log.Println("Starting cache", table.name)
 	err := os.MkdirAll(table.basePath, 0777)
 	if err != nil {
 		return err
 	}
 
 	// The background persistence channel
-	table.persistQueue = make(chan persistEntry, table.persistQueueSize)
-
 	table.started = true
-
 	go func() {
-		log.Println("persist start", table.name)
 		for table.started {
 			e := <-table.persistQueue
 			table.persist(e)
 		}
-		log.Println("persist end", table.name)
 	}()
 
 	// Startup options.
@@ -89,12 +81,10 @@ type persistEntry struct {
 
 func (table *CacheTable) persist(e persistEntry) {
 	dir, fileName := table.getPath(e.key)
-	path := dir + PathSeparator + fileName
 
 	_ = os.MkdirAll(dir, 0777)
 
-	// if toBytes returned nil then try to remove the entry
-	_ = ioutil.WriteFile(path, e.val, 0655)
+	_ = ioutil.WriteFile(dir+PathSeparator+fileName, e.val, 0655)
 }
 
 // dataLoader used by the memory cache to read from disk when an entry is not on disk
@@ -199,9 +189,13 @@ func (table *CacheTable) AddExpiry(key string, lifeSpan time.Duration, data inte
 	return table.add(item)
 }
 
-// NotFoundAdd tests whether an item not found in the cache. Unlike the Exists
-// method this also adds data if they key could not be found.
-func (table *CacheTable) NotFoundAdd(key string, lifeSpan time.Duration, data interface{}) bool {
+// NotFoundAdd will add a key, value pair to the cache only if the key does not already exist either in memory or disk.
+func (table *CacheTable) NotFoundAdd(key string, data interface{}) bool {
+	return table.NotFoundAddExpiry(key, table.expiryTime, data)
+}
+
+// NotFoundAddExpiry will add a key, value pair to the cache only if the key does not already exist either in memory or disk.
+func (table *CacheTable) NotFoundAddExpiry(key string, lifeSpan time.Duration, data interface{}) bool {
 	table.mutex.Lock()
 
 	_, ok := table.items[key]
@@ -251,7 +245,7 @@ func (table *CacheTable) delete(key string) {
 func (table *CacheTable) DeleteFromMemoryAndDisk(key string) {
 	table.mutex.Lock()
 	defer table.mutex.Unlock()
-
+	table.delete(key)
 	_ = os.Remove(table.getFilePath(key))
 }
 
