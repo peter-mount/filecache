@@ -70,12 +70,8 @@ func (table *CacheTable) ExpireDiskMaxAge(maxAge time.Duration) int {
 
 		if info.ModTime().Before(expireTime) {
 			// nre-feeds#21 remove from memory as well as disk
-			table.delete(key)
-
-			err = os.Remove(path)
-			if err != nil {
-				expired++
-			}
+			table.DeleteFromMemoryAndDisk(key)
+			expired++
 		}
 
 		return nil
